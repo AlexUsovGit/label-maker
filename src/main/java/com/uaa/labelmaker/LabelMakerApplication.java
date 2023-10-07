@@ -1,4 +1,4 @@
-package com.uaa.demo.demo;
+package com.uaa.labelmaker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
