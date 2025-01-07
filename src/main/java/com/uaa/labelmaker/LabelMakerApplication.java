@@ -16,6 +16,8 @@ public class LabelMakerApplication
 
         SpringApplication.run(LabelMakerApplication.class, args);
         logger.info("\n\n\nLABEL MAKER STARTED\n\n\n");
+
+
     }
 
 }

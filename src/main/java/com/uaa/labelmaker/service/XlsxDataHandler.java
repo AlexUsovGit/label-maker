@@ -12,6 +12,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,98 +29,125 @@ import java.util.Arrays;
 import java.util.List;
 
 @Service
-public class XlsxDataHandler implements DataHandler
-{
+public class XlsxDataHandler implements DataHandler {
     @Autowired
     StorageService storageService;
 
     String pattern = "MM.yyyy";
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
     public static final String FONT = "Arial.ttf";
+    private InputStream commonRes;
 
     @Override
-    public List<LabelDto> readBook(InputStream inputStream)
-    {
+    public List<LabelDto> readBook(InputStream inputStream) {
 
         List<LabelDto> labels = new ArrayList<>();
         Workbook workbook;
-        try
-        {
+        try {
             workbook = new XSSFWorkbook(inputStream);
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             return new ArrayList<>();
         }
-        Sheet sheet = workbook.getSheetAt(0);
-        for (Row row : sheet)
-        {
+//        for (Sheet sheet : workbook) {
 
-            if (row.getRowNum() == 0)
-            {
+
+        Sheet sheet = workbook.getSheetAt(0);
+        for (Row row : sheet) {
+
+            if (row.getRowNum() == 0) {
                 System.out.println(
                         row.getCell(0) + "\t" +
-                        row.getCell(1) + "\t" +
-                        row.getCell(2) + "\t" +
-                        row.getCell(3) + "\t" +
-                        row.getCell(4) + "\t" +
-                        row.getCell(5) + "\t" +
-                        row.getCell(6) + "\t" +
-                        row.getCell(7) + "\t"
+                                row.getCell(1) + "\t" +
+                                row.getCell(2) + "\t" +
+                                row.getCell(3) + "\t" +
+                                row.getCell(4) + "\t" +
+                                row.getCell(5) + "\t" +
+                                row.getCell(6) + "\t" +
+                                row.getCell(7) + "\t"
                 );
-            }
-            else
-            {
-                String sizes = row.getCell(1).getStringCellValue();
-                for (String currentSize : Arrays.stream(sizes.split(";")).toList())
-                {
-                    LabelDto labelDto = new LabelDto();
-                    try
-                    {
-                        labelDto.setModel(row.getCell(0).getStringCellValue());
-                    }
-                    catch (Exception e)
-                    {
-                        System.out.println("Try to get number value of model");
-                        labelDto.setModel(String.valueOf((int) row.getCell(0).getNumericCellValue()));
-                    }
+            } else {
+                if (!row.getCell(4).getStringCellValue().isEmpty()) {
 
-                    labelDto.setRazmer(currentSize);
-                    double poln = row.getCell(2).getNumericCellValue();
-                    labelDto.setPolnota(String.valueOf((int) poln));
-                    String date = simpleDateFormat.format(row.getCell(3).getDateCellValue());
-                    labelDto.setDataVypuska(date);
-                    labelDto.setMaterVerh(row.getCell(4).getStringCellValue());
-                    labelDto.setMaterPodkladka(row.getCell(5).getStringCellValue());
-                    labelDto.setMaterNiz(row.getCell(6).getStringCellValue());
-                    labels.add(labelDto);
+
+                    String sizes = getStringSizeValue(row);
+                    for (String currentSize : Arrays.stream(sizes.split(";")).toList()) {
+                        LabelDto labelDto = new LabelDto();
+                        try {
+                            labelDto.setModel(row.getCell(0).getStringCellValue());
+                        } catch (Exception e) {
+                            System.out.println("Try to get number value of model");
+                            labelDto.setModel(String.valueOf((int) row.getCell(0).getNumericCellValue()));
+                        }
+
+                        labelDto.setRazmer(currentSize);
+                        double poln = row.getCell(2).getNumericCellValue();
+                        labelDto.setPolnota(String.valueOf((int) poln));
+                        String date = simpleDateFormat.format(row.getCell(3).getDateCellValue());
+                        labelDto.setDataVypuska(date);
+                        labelDto.setMaterVerh(row.getCell(4).getStringCellValue());
+                        labelDto.setMaterPodkladka(row.getCell(5).getStringCellValue());
+                        labelDto.setMaterNiz(row.getCell(6).getStringCellValue());
+                        labels.add(labelDto);
+                    }
                 }
+
 
             }
             System.out.println("Row number " + row.getRowNum() + " complete");
         }
+//        }
 
         return labels;
     }
 
-    @Override
-    public ResponseEntity<InputStreamResource> handle(MultipartFile file)
-    {
-        return ResponseEntity
-                .ok()
-                .body(new InputStreamResource(create(readBook(storageService.upload(file)))));
+    private static String getStringSizeValue(Row row) {
+        String sizes = "";
+        try {
+            sizes = row.getCell(1).getStringCellValue();
+            return sizes;
+        } catch (Exception e) {
+            System.out.println("Can not get string value from row" + row.getRowNum());
+        }
+
+        try {
+            sizes = String.valueOf(row.getCell(1).getNumericCellValue());
+            return sizes;
+        } catch (Exception e) {
+            System.out.println("Can not get numeric/string value from row" + row.getRowNum());
+        }
+
+        return sizes;
     }
 
     @Override
-    public ByteArrayInputStream create(List<LabelDto> labels)
-    {
+    public ResponseEntity<InputStreamResource> handle(MultipartFile file) {
+
+        commonRes = storageService.upload(file);
+        return ResponseEntity.ok().build();
+
+    }
+
+    @Override
+    public ResponseEntity<InputStreamResource> handleDomnload() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "attachment; filename=labels.pdf");
+        ByteArrayInputStream bais = create(readBook(commonRes));
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+//                .contentLength(bais)
+                .body(new InputStreamResource(bais));
+
+    }
+
+    @Override
+    public ByteArrayInputStream create(List<LabelDto> labels) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MM yyyy_ HH:mm:ss");
         String fileName = formatter.format(LocalDateTime.now()) + " labels.pdf";
         System.out.println("Create file");
         Rectangle one = new Rectangle(50.0F, 50.0F);
         Document document = new Document(one);
-        try
-        {
+        try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
 //            PdfWriter.getInstance(document, new FileOutputStream(fileName));
             PdfWriter.getInstance(document, out);
@@ -133,8 +161,7 @@ public class XlsxDataHandler implements DataHandler
             float[] columnWidths = {2F, 3F};
             float[] materialsWith = {2F};
 
-            for (LabelDto label : labels)
-            {
+            for (LabelDto label : labels) {
                 PdfPTable headTable = new PdfPTable(headWith);
                 headTable.setWidthPercentage(100);
                 headTable.setHorizontalAlignment(Element.ALIGN_LEFT);
@@ -201,32 +228,26 @@ public class XlsxDataHandler implements DataHandler
             System.out.println("Creating file is complete");
             return new ByteArrayInputStream(out.toByteArray());
 
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
 
     }
 
-    private PdfPCell createImageCell(String path, float height) throws DocumentException, IOException
-    {
+    private PdfPCell createImageCell(String path, float height) throws DocumentException, IOException {
         Image img = Image.getInstance(path);
         PdfPCell cell = new PdfPCell(img, true);
         cell.setFixedHeight(height);
         return cell;
     }
 
-    private PdfPCell createMaterialCell(String path, float height) throws DocumentException, IOException
-    {
-        if (path.contains("/"))
-        {
+    private PdfPCell createMaterialCell(String path, float height) throws DocumentException, IOException {
+        if (path.contains("/")) {
 
             List<Float> matTWithList = new ArrayList<>();
             matTWithList.add(3F);
             matTWithList.add(3F);
-            if (path.split("/").length == 3)
-            {
+            if (path.split("/").length == 3) {
                 matTWithList.add(3F);
             }
 
@@ -234,8 +255,7 @@ public class XlsxDataHandler implements DataHandler
 
             int i = 0;
 
-            for (Float f : matTWithList)
-            {
+            for (Float f : matTWithList) {
                 matTWith[i++] = (f != null ? f : Float.NaN); // Or whatever default you want.
             }
             PdfPTable matT = new PdfPTable(matTWith);
@@ -260,8 +280,7 @@ public class XlsxDataHandler implements DataHandler
 //            cell.setBorderColor(BaseColor.WHITE);
             matT.addCell(cell);
 
-            if (path.split("/").length == 3)
-            {
+            if (path.split("/").length == 3) {
                 img = Image.getInstance(path.split("/")[2] + ".png");
                 cell = new PdfPCell(img, true);
                 cell.setFixedHeight(height);
@@ -272,9 +291,7 @@ public class XlsxDataHandler implements DataHandler
 
             return new PdfPCell(matT);
 
-        }
-        else
-        {
+        } else {
             Image img = Image.getInstance(path + ".png");
             PdfPCell cell = new PdfPCell(img, true);
             cell.setHorizontalAlignment(Element.ALIGN_CENTER);

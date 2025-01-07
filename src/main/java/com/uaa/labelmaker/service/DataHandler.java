@@ -14,6 +14,7 @@ public interface DataHandler
     List<LabelDto> readBook(InputStream inputStream);
 
     ResponseEntity<InputStreamResource> handle(MultipartFile file);
+    ResponseEntity<InputStreamResource> handleDomnload();
 
     ByteArrayInputStream create(List<LabelDto> labels);
 
