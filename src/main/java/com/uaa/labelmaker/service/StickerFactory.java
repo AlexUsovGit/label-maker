@@ -13,18 +13,18 @@ import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.io.*;
+import java.util.*;
+import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 @Service
 public class StickerFactory {
     private static final Logger logger = LoggerFactory.getLogger(StickerFactory.class);
     public static final String FONT = "arial.ttf";
     public static final int NAME_SYMBOLS_COUNT = 30;
-    public static final int BARCODE_FIXED_HEIGHT = 50;
+    public static final int BARCODE_FIXED_HEIGHT = 54;
     public static final int BARCODE_SIZE = 26;
     public static final int BARCODE_FIXED_HEIGHT_COMMON = 22;
     public static final String SHOE = "shoe";
@@ -35,8 +35,8 @@ public class StickerFactory {
 
 
         PDFRenderer pdfRenderer = new PDFRenderer(qrSourceDocument);
-//        int pageCount = qrSourceDocument.getPages().getCount();
-        int pageCount = 1;
+        int pageCount = qrSourceDocument.getPages().getCount();
+//        int pageCount = 1;
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         Rectangle one = new Rectangle(205.0F, 240.0F);
@@ -88,6 +88,85 @@ public class StickerFactory {
 
     }
 
+    public static byte[] createPDF3(ProductData productData, ParamsDto params) throws DocumentException, IOException, InterruptedException {
+        // Настройки папки с EPS-файлами
+        String folderPath = "/Users/aleksejusov/Downloads/WB_1_1/размер 37/fe835af5-b1af-4dbf-a689-9438398c46bf_begin_offset_0_number_of_codes_240";
+        File folder = new File(folderPath);
+        File[] epsFiles = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".eps"));
+
+        if (epsFiles == null || epsFiles.length == 0) {
+            System.out.println("Нет EPS-файлов в указанной папке.");
+            return new byte[0];
+        }
+
+        // Подготовка PDF-документа
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        Document document = createDocument(outputStream);
+        BaseFont baseFont = BaseFont.createFont(FONT, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
+
+        // Обработка каждого EPS-файла
+        for (File epsFile : Arrays.stream(epsFiles).limit(1).toList()) {
+            try {
+                BufferedImage image = convertEPSToImage(epsFile);
+
+                if (image != null) {
+                    System.out.println("Изображение успешно сгенерировано. Размер: " +
+                            image.getWidth() + "x" + image.getHeight());
+                    generateShoeStickers(baseFont, PdfWriter.getInstance(document, outputStream), document, image, productData, params);
+                } else {
+                    System.err.println("Не удалось декодировать изображение из файла: " + epsFile.getName());
+                }
+            } catch (Exception e) {
+                System.err.println("Ошибка при обработке файла: " + epsFile.getName());
+                e.printStackTrace();
+            }
+        }
+
+        document.close();
+        logger.info("Сохранение наклеек для списка продуктов завершено.");
+        return outputStream.toByteArray();
+    }
+
+    private static Document createDocument(OutputStream outputStream) throws DocumentException {
+        Rectangle pageSize = new Rectangle(205.0F, 240.0F);
+        Document document = new Document(pageSize);
+        PdfWriter.getInstance(document, outputStream);
+        document.setMargins(3.0F, 1.0F, 1.5F, 1.0F);
+        document.open();
+        return document;
+    }
+
+    private static BufferedImage convertEPSToImage(File epsFile) throws IOException, InterruptedException {
+        // Путь к Ghostscript
+        String gsPath = "gs"; // Укажите полный путь, если не в PATH
+
+        List<String> command = Arrays.asList(
+                gsPath,
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-dSAFER",
+                "-dEPSCrop",
+                "-sDEVICE=pngalpha",
+                "-r300",
+                "-sOutputFile=%stdout",
+                epsFile.getAbsolutePath()
+        );
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        Process process = pb.start();
+
+        try (InputStream inputStream = new BufferedInputStream(process.getInputStream())) {
+            BufferedImage image = ImageIO.read(inputStream);
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                throw new IOException("Ошибка при конвертации EPS: " + epsFile.getName() + ". Код завершения: " + exitCode);
+            }
+
+            return image;
+        }
+    }
+
 
     private static void generateShoeStickers(
 
@@ -98,11 +177,11 @@ public class StickerFactory {
             ProductData productData,
             ParamsDto params
     ) throws DocumentException, IOException {
-        float[] columnWidths = {1.8F, 3F};
+        float[] columnWidths = {1.5F, 3F};
         PdfPTable table = new PdfPTable(columnWidths);
         table.setWidthPercentage(100);
-        Font font = new Font(bf, 4.5f, Font.NORMAL);
-        Font sizeFont = new Font(bf, 20.0f, Font.NORMAL);
+        Font font = new Font(bf, 6f, Font.NORMAL);
+        Font sizeFont = new Font(bf, 22.0f, Font.NORMAL);
 
 
         Map<String, ProductData.ProductAttributes> gtinProductAttributes = productData.getGtinProductAttributes();
@@ -118,7 +197,7 @@ public class StickerFactory {
             addDataCell(nameValue, font, table, nameRowHeight);
 
             addDataCell("Артикул", font, table);
-            addDataCell(productAttributes.getModel(), font, table);
+            addDataCell(params.getSex(), font, table);
 
             addDataCell("Торговая марка", font, table);
             String code = productAttributes.getBrand();
@@ -159,7 +238,7 @@ public class StickerFactory {
             addDataCellWithoutBorder(params.getTp(), font, tableAfter);
             addDataCellWithoutBorder("ГОСТ " + params.getGost(), font, tableAfter);
             addDataCellWithoutBorder("Гарантийный срок носки: " + params.getGarant(), font, tableAfter);
-            PdfPCell shoeV = createImageCell("eac.jpg", 12F);
+            PdfPCell shoeV = createImageCell("eac.jpg", 16F);
             shoeV.setBorder(Rectangle.NO_BORDER);
             tableAfter.addCell(shoeV);
             addDataCellWithoutBorder("", font, tableAfter);
@@ -179,6 +258,7 @@ public class StickerFactory {
         PdfPCell cell = new PdfPCell(img, true);
         cell.setVerticalAlignment(Rectangle.TOP);
         cell.setHorizontalAlignment(Rectangle.RIGHT);
+        cell.setPaddingLeft(2);
         cell.setFixedHeight(height);
         return cell;
     }

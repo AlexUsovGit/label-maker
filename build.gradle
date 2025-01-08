@@ -36,6 +36,11 @@ dependencies {
 	implementation 'org.apache.pdfbox:pdfbox:2.0.29'
 
 
+	// Apache Commons IO для работы с файлами
+	implementation 'commons-io:commons-io:2.11.0'
+
+	implementation 'org.ghost4j:ghost4j:1.0.1'
+
 
 	// https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
 	implementation 'org.apache.commons:commons-lang3:3.12.0'
