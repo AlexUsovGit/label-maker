@@ -76,7 +76,7 @@ public class EpsToPdfService {
 
         try (PDDocument document = PDDocument.load(epsInputStream)) {
             // Создаем объект рендера для PDF-документа
-            return StickerFactory.createPDF(document, productData, params);
+            return StickerFactory.createWbPDF(document, productData, params);
 
         } catch (IOException e) {
             System.err.println("Ошибка при обработке PDF-файла: " + e.getMessage());
