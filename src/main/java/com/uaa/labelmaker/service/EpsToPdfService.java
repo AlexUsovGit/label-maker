@@ -8,24 +8,146 @@ import com.uaa.labelmaker.model.ProductData;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 
 @Service
 public class EpsToPdfService {
 
+    private static final int IMAGE_WIDTH = 47;
+    private static final int IMAGE_HEIGHT = 47;
     private final ObjectMapper objectMapper;
 
     public EpsToPdfService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+
+    public void processExcelFile(InputStream inputStream) {
+        try {
+             Workbook workbook = new XSSFWorkbook(inputStream);
+
+                Sheet sheet = workbook.getSheetAt(0); // Берём первый лист
+                for (Row row : sheet) {
+                    for (Cell cell : row) {
+                        System.out.println("Ячейка: " + cell.toString());
+                    }
+                }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public BufferedImage processAllFilesInDirectory(MultipartFile file) throws IOException {
+        try {
+            // Читаем содержимое файла
+            String data = new String(file.getBytes());
+
+            // Генерируем изображение
+            BufferedImage image = generateImageFromData(extractRelevantData(data), 4);
+
+//
+//            // Получаем оригинальное имя файла и заменяем расширение на .png
+//            String originalFileName = file.getOriginalFilename();
+//            if (originalFileName != null) {
+//                originalFileName = originalFileName.replaceAll("\\.[^.]+$", "") + ".png";
+//            } else {
+//                originalFileName = UUID.randomUUID() + ".png"; // На случай, если имя файла отсутствует
+//            }
+//
+//
+//
+//            Path outputPath = Paths.get("output_images", originalFileName);
+//            Files.createDirectories(outputPath.getParent());
+//            ImageIO.write(image, "png", outputPath.toFile());
+//            System.out.println("Сохранено: " +originalFileName);
+
+            return image;
+
+        } catch (IOException e) {
+            System.out.println("Ошибка при обработке файла: " +file.getOriginalFilename());
+
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+
+    public BufferedImage generateImageFromData(String data, int scaleFactor) {
+        int scaledWidth = IMAGE_WIDTH * scaleFactor;
+        int scaledHeight = IMAGE_HEIGHT * scaleFactor;
+
+        BufferedImage image = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = image.createGraphics();
+
+        // Включаем сглаживание (антиалиасинг)
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+        // Инвертируем ось Y
+        AffineTransform transform = new AffineTransform();
+        transform.translate(0, scaledHeight);
+        transform.scale(1, -1);
+        g2d.setTransform(transform);
+
+        // Рисуем фон белого цвета
+        g2d.setColor(Color.WHITE);
+        g2d.fillRect(0, 0, scaledWidth, scaledHeight);
+
+        // Рисуем черные прямоугольники из данных
+        g2d.setColor(Color.BLACK);
+        String[] lines = data.split("\n");
+        for (String line : lines) {
+            String[] parts = line.split(" ");
+            if (parts.length >= 4) {
+                int x = (int) (Double.parseDouble(parts[0]) * scaleFactor);
+                int y = (int) (Double.parseDouble(parts[1]) * scaleFactor);
+                int width = (int) (Double.parseDouble(parts[2]) * scaleFactor);
+                int height = (int) (Double.parseDouble(parts[3]) * scaleFactor);
+
+                g2d.fillRect(x, y, width, height);
+            }
+        }
+
+        g2d.dispose();
+        return image;
+    }
+
+
+    public String extractRelevantData(String data) {
+        // Определяем начальный и конечный индексы для блока
+        int startIndex = data.indexOf("%%EndProlog");
+        int endIndex = data.indexOf("%%EOF");
+
+        if (startIndex != -1 && endIndex != -1) {
+            // Извлекаем данные между %%EndProlog и %%EOF
+            return data.substring(startIndex + "%%EndProlog".length(), endIndex).trim();
+        }
+
+        // Если блок не найден, возвращаем пустую строку
+        return "";
     }
 
     public void renderEpsToPng(InputStream epsInputStream, String outputFilePath) throws Exception {

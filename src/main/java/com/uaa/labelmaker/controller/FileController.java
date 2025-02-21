@@ -24,6 +24,13 @@ public class FileController
         return dataHandler.handle(file);
     }
 
+    @PostMapping(value = "/upload/data", produces = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<InputStreamResource> uploadData(@RequestParam("excelFile") MultipartFile file)
+    {
+        return dataHandler.handle(file);
+    }
+
+
     @GetMapping(value = "/download", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<InputStreamResource> download()
     {

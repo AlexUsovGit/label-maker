@@ -22,6 +22,7 @@ import static com.itextpdf.text.Element.ALIGN_CENTER;
 @Service
 public class StickerFactory {
     private static final Logger logger = LoggerFactory.getLogger(StickerFactory.class);
+
     public static final String FONT = "arial.ttf";
     public static final int NAME_SYMBOLS_COUNT = 30;
     public static final int BARCODE_FIXED_HEIGHT = 54;
@@ -88,6 +89,36 @@ public class StickerFactory {
 
     }
 
+    public static byte[] createWbPDF(Map<String, BufferedImage> images, ProductData productData, ParamsDto params) {
+
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        Rectangle one = new Rectangle(270.0F, 230.0F);
+        Document document = new Document(one);
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, outputStream);
+            document.setMargins(3.0F, 1.0F, 1.5F, 1.0F);
+            document.open();
+            BaseFont baseFont = BaseFont.createFont(FONT, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
+
+            for (String fileName : images.keySet()) {
+
+                generateWbShoeStickers(baseFont, writer, document, images.get(fileName), productData, params, fileName);
+            }
+
+            document.close();
+            logger.info("Save stickers for product list");
+            return outputStream.toByteArray();
+
+        } catch (Exception e) {
+            String errorMessage = String.format("Create stickers error. Message = %s", e.getMessage());
+            logger.warn(errorMessage);
+            document.close();
+            return new byte[0];
+        }
+
+    }
+
     public static byte[] createWbPDF(PDDocument qrSourceDocument, ProductData productData, ParamsDto params) {
 
 
@@ -117,7 +148,7 @@ public class StickerFactory {
                 BufferedImage fullPageImage = pdfRenderer.renderImageWithDPI(i, 300);
                 // Обрезаем изображение до заданной области (QR-код)
                 BufferedImage qrCodeImage = fullPageImage.getSubimage(x, y, width, height);
-                generateWbShoeStickers(baseFont, writer, document, qrCodeImage, productData, params);
+                generateWbShoeStickers(baseFont, writer, document, qrCodeImage, productData, params, "");
             }
 
             // Рендерим первую страницу (индексация с 0)
@@ -308,6 +339,109 @@ public class StickerFactory {
 
     }
 
+//    private static void generateWbShoeStickers(
+//
+//            BaseFont bf,
+//            PdfWriter writer,
+//            Document document,
+//            Map<String, BufferedImage> images,
+//            ProductData productData,
+//            ParamsDto params
+//    ) throws DocumentException, IOException {
+//        Font font = new Font(bf, 6f, Font.NORMAL);
+//        Font customFont = new Font(bf, 8f, Font.BOLD);
+//        Font boldFont = new Font(bf, 6f, Font.BOLD);
+//
+//        Font sizeFont = new Font(bf, 25.0f, Font.NORMAL);
+//
+//
+//        Map<String, ProductData.ProductAttributes> gtinProductAttributes = productData.getGtinProductAttributes();
+//        Set<String> strings = gtinProductAttributes.keySet();
+//        Optional<String> first = strings.stream().findFirst();
+//        String barcode = "";
+//        if (first.isPresent()) {
+//            barcode = first.get();
+//
+//            PdfPTable tableText = new PdfPTable(new float[]{5F, 1F});
+//            tableText.setWidthPercentage(100);
+//            addDataCellWithoutBorderAndHeight("Импортер в РФ: ", params.getImporter(), font, boldFont, tableText);
+//            PdfPCell shoeV = createImageCell("eac.jpg", 10F);
+//            shoeV.setBorder(Rectangle.NO_BORDER);
+////            shoeV.setRowspan(2);
+//            shoeV.setHorizontalAlignment(ALIGN_CENTER);
+//            shoeV.setVerticalAlignment(ALIGN_CENTER);
+//            tableText.addCell(shoeV);
+//            addDataCellWithoutBorderAndHeight("Изготовитель: ", params.getProducent(), font, boldFont, tableText);
+//            addDataCellWithoutBorderAndHeight("", "", font, boldFont, tableText);
+//            document.add(tableText);
+//
+//            ProductData.ProductAttributes productAttributes = gtinProductAttributes.get(first.get());
+//
+//            PdfPTable tableBefore = new PdfPTable(new float[]{2F, 2F});
+//            tableBefore.setWidthPercentage(100);
+//            addDataCellWithoutBorder("Артикул: ", params.getSex(), customFont, boldFont, tableBefore);
+//
+//
+//            addWbDataMatrixCell(tableBefore, bufferedImage);
+//            addDataCellWithoutBorder("Цвет: ", params.getColor(), customFont, boldFont, tableBefore);
+//            addDataCellWithoutBorder("Страна производства: ", params.getCountry(), font, boldFont, tableBefore);
+//            addDataCellWithoutBorder(params.getTp(), "", font, boldFont, tableBefore);
+//
+//
+//            String nameValue = productAttributes.getFullName();
+//            int nameRowHeight = (nameValue != null && nameValue.length() > NAME_SYMBOLS_COUNT) ? 18 : 10;
+//
+//
+//            addDataCellWithoutBorder("Наименование: ", nameValue, font, boldFont, tableBefore);
+//            addDataCellWithoutBorder("Торговая марка: ", productAttributes.getBrand(), font, boldFont, tableBefore);
+//            addDataCellWithoutBorder("Верх: ", productAttributes.getMaterialUpper(), font, boldFont, tableBefore);
+//            addDataCellWithoutBorder("Подкладка: ", productAttributes.getMaterialLining(), font, boldFont, tableBefore);
+//            addDataCellWithoutBorder("Подошва: ", productAttributes.getMaterialDown(), font, boldFont, tableBefore);
+//
+//            addDataCellWithoutBorder("Гарантийный срок носки: ", params.getGarant(), font, boldFont, tableBefore);
+//            addDataCellWithoutBorder("ГОСТ ", params.getGost(), font, boldFont, tableBefore);
+////            PdfPCell shoeV = createImageCell("eac.jpg", 16F);
+////            shoeV.setBorder(Rectangle.NO_BORDER);
+////            shoeV.setRowspan(2);
+////            shoeV.setHorizontalAlignment(Rectangle.RIGHT);
+////            shoeV.setVerticalAlignment(ALIGN_RIGHT);
+////            tableBefore.addCell(shoeV);
+//            //todo
+//
+//            addDataCellWithoutBorder("Дата: ", "20.02.2025", font, boldFont, tableBefore);
+//            document.add(tableBefore);
+//            PdfPTable tableAfter = new PdfPTable(new float[]{5F, 2F});
+//
+//            PdfPCell cellBar = createBarcode(writer, barcode.substring(1), BARCODE_SIZE);
+//
+////            cellBar.setRowspan(4);
+//            cellBar.setBorder(Rectangle.NO_BORDER);
+//            cellBar.setFixedHeight(BARCODE_FIXED_HEIGHT);
+//            cellBar.setHorizontalAlignment(Element.ALIGN_LEFT);
+//            cellBar.setVerticalAlignment(Element.ALIGN_MIDDLE);
+//            cellBar.setPaddingTop(0F);
+//            cellBar.setPaddingRight(0F);
+//            cellBar.setPaddingBottom(0F);
+//            cellBar.setPaddingLeft(0F);
+//            tableAfter.addCell(cellBar);
+//
+//            PdfPCell cell;
+//            cell = new PdfPCell(new Phrase(productAttributes.getProductSize(), sizeFont));
+//            cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+//            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+//            cell.setPaddingLeft(1F);
+////            cell.setBorder(Rectangle.NO_BORDER);
+////            cell.setRowspan(4);
+//            tableAfter.addCell(cell);
+//
+//
+//            document.add(tableAfter);
+//
+//        }
+//
+//
+//    }
+
     private static void generateWbShoeStickers(
 
             BaseFont bf,
@@ -315,7 +449,8 @@ public class StickerFactory {
             Document document,
             BufferedImage bufferedImage,
             ProductData productData,
-            ParamsDto params
+            ParamsDto params,
+            String fileName
     ) throws DocumentException, IOException {
         Font font = new Font(bf, 6f, Font.NORMAL);
         Font customFont = new Font(bf, 8f, Font.BOLD);
@@ -349,8 +484,6 @@ public class StickerFactory {
             PdfPTable tableBefore = new PdfPTable(new float[]{2F, 2F});
             tableBefore.setWidthPercentage(100);
             addDataCellWithoutBorder("Артикул: ", params.getSex(), customFont, boldFont, tableBefore);
-
-
 
 
             addWbDataMatrixCell(tableBefore, bufferedImage);
@@ -407,6 +540,13 @@ public class StickerFactory {
 
 
             document.add(tableAfter);
+
+            PdfPTable tableName = new PdfPTable(new float[]{5F});
+            Font fontFileName = new Font(bf, 5f, Font.ITALIC);
+            tableName.setWidthPercentage(100);
+            tableName.setHorizontalAlignment(ALIGN_CENTER);
+            addDataCellWithoutBorderAndHeight("", fileName, fontFileName, boldFont, tableName);
+            document.add(tableName);
 
         }
 

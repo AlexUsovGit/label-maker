@@ -2,7 +2,9 @@ package com.uaa.labelmaker.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaa.labelmaker.model.ParamsDto;
+import com.uaa.labelmaker.model.ProductData;
 import com.uaa.labelmaker.service.EpsToPdfService;
+import com.uaa.labelmaker.service.StickerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,27 +15,27 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.UUID;
+import java.nio.file.StandardCopyOption;
+import java.util.*;
 
 @RestController
 @RequestMapping("/eps")
 public class EspToPdfController {
 
-    private static final int IMAGE_WIDTH = 47;
-    private static final int IMAGE_HEIGHT = 47;
+    private static final String UPLOAD_DIR = "uploads";
+
 
     private final EpsToPdfService epsToPdfService;
+    private final ObjectMapper objectMapper;
 
-    public EspToPdfController(EpsToPdfService epsToPdfService) {
+    public EspToPdfController(EpsToPdfService epsToPdfService, ObjectMapper objectMapper) {
         this.epsToPdfService = epsToPdfService;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping("/convert")
@@ -56,7 +58,7 @@ public class EspToPdfController {
             byte[] productDataForExport = epsToPdfService.createShoeStickers(file.getInputStream(), jsonFile, params);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", sex+ ".pdf");
+            headers.setContentDispositionFormData("attachment", sex + ".pdf");
             return ResponseEntity
                     .ok()
                     .headers(headers)
@@ -89,7 +91,7 @@ public class EspToPdfController {
             byte[] productDataForExport = epsToPdfService.createShoeStickers2(file.getInputStream(), jsonFile, params);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", sex+ ".pdf");
+            headers.setContentDispositionFormData("attachment", sex + ".pdf");
             return ResponseEntity
                     .ok()
                     .headers(headers)
@@ -121,7 +123,7 @@ public class EspToPdfController {
             byte[] productDataForExport = epsToPdfService.createShoeStickers3(file.getInputStream(), jsonFile, params);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", sex+ ".pdf");
+            headers.setContentDispositionFormData("attachment", sex + ".pdf");
             return ResponseEntity
                     .ok()
                     .headers(headers)
@@ -132,6 +134,60 @@ public class EspToPdfController {
             return ResponseEntity.status(500).body(null);
         }
     }
+
+
+    @PostMapping("/upload/data")
+    public ResponseEntity<byte[]> handleFilesUpload(@RequestParam("files") List<MultipartFile> files,
+                                                    @RequestParam("jsonFile") MultipartFile jsonFile,
+                                                    @RequestParam("importer") String importer,
+                                                    @RequestParam("producent") String producent,
+                                                    @RequestParam("country") String country,
+                                                    @RequestParam("tp") String tp,
+                                                    @RequestParam("gost") String gost,
+                                                    @RequestParam("garant") String garant,
+                                                    @RequestParam("sex") String sex,
+                                                    @RequestParam("color") String color) {
+        Map<String, BufferedImage> localStorage = new HashMap<>(files.size());
+
+        // Создаём папку для загрузки, если её нет
+        try {
+            for (MultipartFile file : files) {
+                if (file.getOriginalFilename() != null && file.getOriginalFilename().endsWith(".xlsx")) {
+                    // Читаем Excel-файл
+                    epsToPdfService.processExcelFile(file.getInputStream());
+                }
+
+                if (file.getOriginalFilename() != null && file.getOriginalFilename().endsWith(".eps")) {
+                    // Читаем Excel-файл
+                    BufferedImage bufferedImage = epsToPdfService.processAllFilesInDirectory(file);
+                    if(bufferedImage != null){
+                        localStorage.put(file.getOriginalFilename().replaceAll("\\.[^.]+$", "") ,bufferedImage);
+                    }
+
+                }
+
+            }
+            System.out.println(localStorage.size());
+            var params = new ParamsDto(importer, producent, country, tp, gost, garant, sex, color);
+
+            ProductData productData = objectMapper.readValue(jsonFile.getInputStream(), ProductData.class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", sex + ".pdf");
+            return ResponseEntity
+                    .ok()
+                    .headers(headers)
+                    .body(StickerFactory.createWbPDF(localStorage, productData,params));
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+
+
+    }
+
     @PostMapping("/upload")
     public String handleFileUpload(@RequestParam("file") List<MultipartFile> files) {
         StringBuilder response = new StringBuilder();
@@ -142,7 +198,7 @@ public class EspToPdfController {
                 String data = new String(file.getBytes());
 
                 // Генерируем изображение
-                BufferedImage image = generateImageFromData(extractRelevantData(data));
+                BufferedImage image = epsToPdfService.generateImageFromData(epsToPdfService.extractRelevantData(data), 2);
 
 
                 // Получаем оригинальное имя файла и заменяем расширение на .png
@@ -168,50 +224,5 @@ public class EspToPdfController {
         return response.toString();
     }
 
-    private BufferedImage generateImageFromData(String data) {
-        BufferedImage image = new BufferedImage(IMAGE_WIDTH, IMAGE_HEIGHT, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2d = image.createGraphics();
 
-        // Инвертируем ось Y
-        AffineTransform transform = new AffineTransform();
-        transform.translate(0, IMAGE_HEIGHT);
-        transform.scale(1, -1);
-        g2d.setTransform(transform);
-
-        // Рисуем фон белого цвета
-        g2d.setColor(Color.WHITE);
-        g2d.fillRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
-
-        // Рисуем черные прямоугольники из данных
-        g2d.setColor(Color.BLACK);
-        String[] lines = data.split("\n");
-        for (String line : lines) {
-            String[] parts = line.split(" ");
-            if (parts.length >= 4) {
-                int x = (int) Double.parseDouble(parts[0]);
-                int y = (int) Double.parseDouble(parts[1]);
-                int width = (int) Double.parseDouble(parts[2]);
-                int height = (int) Double.parseDouble(parts[3]);
-
-                g2d.fillRect(x, y, width, height);
-            }
-        }
-
-        g2d.dispose();
-        return image;
-    }
-
-    private String extractRelevantData(String data) {
-        // Определяем начальный и конечный индексы для блока
-        int startIndex = data.indexOf("%%EndProlog");
-        int endIndex = data.indexOf("%%EOF");
-
-        if (startIndex != -1 && endIndex != -1) {
-            // Извлекаем данные между %%EndProlog и %%EOF
-            return data.substring(startIndex + "%%EndProlog".length(), endIndex).trim();
-        }
-
-        // Если блок не найден, возвращаем пустую строку
-        return "";
-    }
 }
